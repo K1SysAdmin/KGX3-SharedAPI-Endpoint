@@ -1,4 +1,4 @@
-# KGX3 Shared API Test Suite
+# KGX3 Documentation and Testing
 **Thomas Kuhn Foundation**
 **Shared KGX3 API Endpoint for Members** `https://preprintwatch.com/wp-json/pw-kgx3/v1/submit`
 
