@@ -444,6 +444,203 @@ python test_api.py
 
 ---
 
+## React / Node.js Integration Guide
+
+Developers who wish to connect frontend React applications or backend Node.js services to the KGX3 Shared API can reuse the same
+request schema that the Python test harness demonstrates. The examples below use native `fetch` calls available in modern
+browsers and Node.js 18+. For older Node releases, install [`node-fetch`](https://www.npmjs.com/package/node-fetch) or
+[`axios`](https://www.npmjs.com/package/axios) and replace the native call accordingly.
+
+### Common Setup
+
+Store the API key securely and never commit it to source control. In local development you can use an `.env` file and load it
+with libraries such as [`dotenv`](https://www.npmjs.com/package/dotenv).
+
+```bash
+npm install dotenv
+```
+
+```javascript
+// config.js
+import 'dotenv/config';
+
+export const KGX3_ENDPOINT = 'https://preprintwatch.com/wp-json/pw-kgx3/v1/submit';
+export const KGX3_API_KEY = process.env.KGX3_API_KEY;
+```
+
+### Node.js Service Example
+
+```javascript
+// submitPreprint.js
+import fetch from 'node-fetch';
+import { KGX3_ENDPOINT, KGX3_API_KEY } from './config.js';
+
+export async function submitPreprint({ title, pdfUrl, email }) {
+  const response = await fetch(KGX3_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': KGX3_API_KEY,
+    },
+    body: JSON.stringify({
+      title,
+      pdf_url: pdfUrl,
+      email,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`KGX3 submission failed (${response.status}): ${errorBody}`);
+  }
+
+  return response.json();
+}
+
+// Usage example
+submitPreprint({
+  title: 'On Paradigm Shifts',
+  pdfUrl: 'https://example.org/paper.pdf',
+  email: 'research@kuhnfoundation.org',
+})
+  .then((data) => console.log('Submission accepted:', data))
+  .catch((err) => console.error(err));
+```
+
+### React Component Example
+
+React components can call the same helper while keeping sensitive credentials on a backend proxy. When direct access is needed
+for trusted internal tools, read the key from runtime configuration (e.g., environment variables injected at build time).
+
+```javascript
+// src/components/SubmitPreprintForm.jsx
+import { useState } from 'react';
+
+const KGX3_ENDPOINT = 'https://preprintwatch.com/wp-json/pw-kgx3/v1/submit';
+const KGX3_API_KEY = process.env.REACT_APP_KGX3_API_KEY;
+
+export function SubmitPreprintForm() {
+  const [status, setStatus] = useState(null);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+
+    try {
+      const response = await fetch(KGX3_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': KGX3_API_KEY,
+        },
+        body: JSON.stringify({
+          title: formData.get('title'),
+          pdf_url: formData.get('pdf_url'),
+          email: formData.get('email'),
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.message || 'Request failed');
+      }
+
+      setStatus({ type: 'success', message: `Submission accepted. Reference: ${data.reference_id}` });
+    } catch (error) {
+      setStatus({ type: 'error', message: error.message });
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <label>
+        Title
+        <input name="title" required />
+      </label>
+      <label>
+        PDF URL
+        <input name="pdf_url" type="url" required />
+      </label>
+      <label>
+        Contact Email
+        <input name="email" type="email" />
+      </label>
+      <button type="submit">Submit to KGX3</button>
+
+      {status && (
+        <p className={status.type === 'success' ? 'success' : 'error'}>{status.message}</p>
+      )}
+    </form>
+  );
+}
+```
+
+**Security Reminder:** For public-facing React apps, avoid shipping the raw API key to the browser. Instead, expose a secure
+backend endpoint that proxies requests to the KGX3 API with the key stored server-side.
+
+---
+
+## REST API cURL Documentation
+
+The KGX3 Shared API accepts JSON payloads over HTTPS with an API key. The following commands demonstrate how to interact with the
+endpoint using `curl`.
+
+### Base Command
+
+```bash
+curl -X POST \
+  https://preprintwatch.com/wp-json/pw-kgx3/v1/submit \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $KGX3_API_KEY" \
+  -d '{
+    "title": "On Paradigm Shifts",
+    "pdf_url": "https://example.org/paper.pdf",
+    "email": "research@kuhnfoundation.org"
+  }'
+```
+
+### Store Response to File
+
+```bash
+curl -sS -X POST \
+  https://preprintwatch.com/wp-json/pw-kgx3/v1/submit \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $KGX3_API_KEY" \
+  -d @payload.json \
+  -o response.json
+```
+
+Where `payload.json` contains the JSON body and `response.json` captures the API response for auditing.
+
+### Include Additional Headers
+
+If the Foundation issues supplementary headers (e.g., tracing IDs), append them with additional `-H` flags:
+
+```bash
+curl -X POST \
+  https://preprintwatch.com/wp-json/pw-kgx3/v1/submit \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $KGX3_API_KEY" \
+  -H "X-Trace-Id: abc123" \
+  -d '{"title":"Tracing Example","pdf_url":"https://example.org/trace.pdf"}'
+```
+
+### Inspect Response Headers
+
+Use the verbose flag to log the request/response handshake for debugging:
+
+```bash
+curl -v -X POST \
+  https://preprintwatch.com/wp-json/pw-kgx3/v1/submit \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $KGX3_API_KEY" \
+  -d '{"title":"Verbose Example","pdf_url":"https://example.org/verbose.pdf"}'
+```
+
+**Tip:** Wrap the commands in shell scripts or CI jobs to automate regression checks similar to the Python suite.
+
+---
+
 ## Member License
 
 **License:** Thomas Kuhn Foundation Members-Only License
